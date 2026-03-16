@@ -4,30 +4,24 @@ import qrcode from 'qrcode';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// State yang di-share ke index.js
 export const state = {
-  qrData: null,       // raw QR string dari whatsapp-web.js
+  qrData: null,
   isReady: false,
   botName: null,
   botNumber: null,
+  disconnectedReason: null, // ← track reason
 };
 
 // ── Routes ────────────────────────────────────────────────
 app.get('/', (req, res) => {
-  if (state.isReady) {
-    return res.send(pageReady(state.botName, state.botNumber));
-  }
-  if (!state.qrData) {
-    return res.send(pageWaiting());
-  }
+  if (state.isReady) return res.send(pageReady(state.botName, state.botNumber));
+  if (state.disconnectedReason) return res.send(pageDisconnected(state.disconnectedReason));
+  if (!state.qrData) return res.send(pageWaiting());
   res.send(pageQR());
 });
 
-// Endpoint QR sebagai image PNG (buat di-embed di HTML)
 app.get('/qr.png', async (req, res) => {
-  if (!state.qrData) {
-    return res.status(404).send('QR belum tersedia');
-  }
+  if (!state.qrData) return res.status(404).send('QR belum tersedia');
   try {
     const buffer = await qrcode.toBuffer(state.qrData, {
       errorCorrectionLevel: 'H',
@@ -42,9 +36,13 @@ app.get('/qr.png', async (req, res) => {
   }
 });
 
-// Status endpoint (buat auto-refresh cek)
 app.get('/status', (req, res) => {
-  res.json({ ready: state.isReady, hasQR: !!state.qrData });
+  res.json({
+    ready: state.isReady,
+    hasQR: !!state.qrData,
+    disconnected: !!state.disconnectedReason,
+    reason: state.disconnectedReason,
+  });
 });
 
 // ── HTML Pages ────────────────────────────────────────────
@@ -70,11 +68,9 @@ function pageQR() {
       <p class="hint">QR expired tiap ~20 detik, auto-refresh otomatis ✨</p>
     </div>
     <script>
-      // Auto refresh QR image tiap 5 detik
       setInterval(() => {
         document.getElementById('qrimg').src = '/qr.png?t=' + Date.now();
       }, 5000);
-      // Cek kalau udah connected
       setInterval(async () => {
         const res = await fetch('/status');
         const data = await res.json();
@@ -100,6 +96,32 @@ function pageReady(name, number) {
         <code>/help</code> → List semua command
       </div>
     </div>
+    <script>
+      // Polling cek kalau tiba-tiba disconnect
+      setInterval(async () => {
+        const res = await fetch('/status');
+        const data = await res.json();
+        if (!data.ready) location.reload();
+      }, 5000);
+    </script>
+  `);
+}
+
+function pageDisconnected(reason) {
+  return html('⚠️ Disconnected', `
+    <div class="card warn">
+      <div class="checkmark">⚠️</div>
+      <h1>Bot Terputus</h1>
+      <p>Alasan: <strong>${reason || 'Unknown'}</strong></p>
+      <p>Bot lagi mencoba reconnect otomatis...<br>Kalau QR muncul, scan ulang ya.</p>
+    </div>
+    <script>
+      setInterval(async () => {
+        const res = await fetch('/status');
+        const data = await res.json();
+        if (data.ready || data.hasQR) location.reload();
+      }, 3000);
+    </script>
   `);
 }
 
@@ -132,6 +154,7 @@ function html(title, body) {
       text-align: center;
     }
     .card.success { border-color: #25d366; }
+    .card.warn { border-color: #f59e0b; }
     h1 { font-size: 1.6rem; margin-bottom: 10px; }
     h2 { font-size: 1.2rem; margin: 16px 0 8px; }
     p  { color: #999; line-height: 1.6; margin: 8px 0; }
@@ -165,7 +188,6 @@ function html(title, body) {
 </html>`;
 }
 
-// ── Start server ──────────────────────────────────────────
 export function startServer() {
   app.listen(PORT, () => {
     console.log(`🌐 Web server aktif di port ${PORT}`);
