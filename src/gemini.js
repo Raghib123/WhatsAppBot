@@ -29,7 +29,7 @@ export async function geminiChat(userId, userMessage) {
   const history = getHistory(userId);
 
   const chat = ai.chats.create({
-    model: 'gemini-2.0-flash',
+    model: 'gemini-3.1-flash-lite-preview',
     history,
     config: {
       systemInstruction: `Kamu adalah asisten WhatsApp yang helpful, friendly, dan sedikit santai.
@@ -52,7 +52,7 @@ Kalau user minta buat gambar, kasih tau mereka untuk pakai prefix /image diikuti
 // ── Generate Image dengan Imagen 3 ────────────────────────
 export async function geminiGenerateImage(prompt) {
   const response = await ai.models.generateImages({
-    model: 'imagen-3.0-generate-002',
+    model: 'gemini-3.1-flash-image-preview',
     prompt,
     config: {
       numberOfImages: 1,
