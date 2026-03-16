@@ -5,7 +5,8 @@ import { startServer, state } from './server.js';
 
 const { Client, LocalAuth } = pkg;
 
-// Start web server dulu (Railway butuh PORT bound segera)
+let readyAt = null;
+
 startServer();
 
 const client = new Client({
@@ -25,16 +26,15 @@ const client = new Client({
   },
 });
 
-// ── QR Code → simpan ke state, tampil di web ─────────────
 client.on('qr', (qr) => {
   state.qrData = qr;
   state.isReady = false;
   console.log('📱 QR siap! Buka Railway URL di browser untuk scan.');
 });
 
-// ── Ready ─────────────────────────────────────────────────
 client.on('ready', () => {
   const info = client.info;
+  readyAt = Date.now();
   state.isReady = true;
   state.qrData = null;
   state.botName = info.pushname;
@@ -49,14 +49,18 @@ client.on('ready', () => {
   console.log('─'.repeat(40));
 });
 
-// ── Message ───────────────────────────────────────────────
 client.on('message', async (msg) => {
   if (msg.from === 'status@broadcast') return;
   if (msg.fromMe) return;
+  if (msg.isStatus) return;
+
+  // Ignore pesan lama sebelum bot ready
+  const msgTime = msg.timestamp * 1000;
+  if (!readyAt || msgTime < readyAt) return;
+
   await handleMessage(client, msg);
 });
 
-// ── Auth ──────────────────────────────────────────────────
 client.on('authenticated', () => console.log('🔐 Authenticated!'));
 client.on('auth_failure', (msg) => {
   console.error('❌ Auth gagal:', msg);
@@ -67,10 +71,10 @@ client.on('disconnected', (reason) => {
   console.warn('⚠️  Disconnected:', reason);
   state.isReady = false;
   state.qrData = null;
+  readyAt = null;
   console.log('🔄 Reconnecting...');
   client.initialize();
 });
 
-// ── Init ──────────────────────────────────────────────────
 console.log('🚀 Starting WA Gemini Bot...');
 client.initialize();
