@@ -1,0 +1,15 @@
+services:
+  wa-bot:
+    build: .
+    container_name: wa-gemini-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      # Persistent WA session - biar ga perlu scan QR ulang tiap restart
+      - wa_auth:/app/.wwebjs_auth
+
+volumes:
+  wa_auth:
